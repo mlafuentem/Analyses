@@ -1,0 +1,1304 @@
+---
+title: "CT test"
+output:
+  pdf_document: default
+  word_document: default
+---
+
+```{r setup, include=FALSE, cache=TRUE}
+knitr::opts_chunk$set(echo = FALSE)
+
+library (dplyr)  
+library(tidyr)
+library(psych)
+library(sjPlot)
+library (GPArotation)
+library(nFactors)
+library (FactoMineR)
+library(lavaan)
+library(sem)
+library(tidySEM)
+library(semPlot)
+library(Factoshiny)
+library(readxl)
+library(purrr)
+library(lavaan)
+library(readr)
+library(utf8)
+library(purrr)
+library(huxtable)
+library(Hmisc)
+library(yarrr)
+library(effsize)
+library(ltm) 
+library(openxlsx)
+library(devtools)
+library(DataExplorer)
+library(performance)
+library(see)
+```
+
+```{r data, dependson='setup', cache=TRUE}
+#import data from novices
+novices_1 <- readxl::read_excel('Z:/lafuente/CT/quantitative pilot/Prolific/final docs/1st test comp valid Prolific.xlsx')
+novices_1 <- novices_1[1:156,-c(1:8, 10, 13:16, 19:26, 29, 32, 35:40, 43, 46:47, 50, 53, 56, 59, 62)]
+
+novices_2 <- read_excel('Z:/lafuente/CT/quantitative pilot/Prolific/final docs/2nd test comp valid Prolific.xlsx')
+
+#eliminate some columns and files
+novices_2 <- novices_2 [1:152, -c(1:8, 10, 13, 16, 19, 22, 25:28, 31, 34:35, 38, 41, 44, 47, 50, 53)]
+
+#rename a couple of columns
+colnames(novices_1)[c(1,28)] <- c('ID', 'time_1')
+colnames(novices_2)[c(1, 30)] <- c('ID', 'time_2')
+
+#merge both parts of the test
+df_novices <- inner_join(novices_1, novices_2, by= 'ID')
+
+#let's create a couple of vector names to rearrange the df
+vec1 <- NA
+vec2 <- NA
+
+for (i in 1:27) {
+vec1[i] <- paste(i)
+vec2[i] <- paste("t",i, sep = "")
+}
+
+#let's use the two vectors to rearrange the df columns
+df_novices <- df_novices [c('ID', vec1, vec2, 'time_1', 'time_2')]
+
+#load data from prolific experts
+prol_exp_1 <- read_excel('Z:/lafuente/CT/quantitative pilot/Prolific/final docs/1st test experts comp valid.xlsx')
+
+prol_exp_2 <- read_excel('Z:/lafuente/CT/quantitative pilot/Prolific/final docs/2nd test experts valid.xlsx')
+
+#eliminate columns and files
+prol_exp_1 <- prol_exp_1 [1:34, -c(1:8, 10, 13:16, 19:26, 29, 34:39, 42, 45:46, 49, 52, 55, 58, 61)]
+
+prol_exp_2 <- prol_exp_2[1:34, -c(1:8, 10, 13, 16, 19, 22, 25:28, 31, 34:35, 38, 41, 44, 47, 50, 53)]
+
+#rename a couple of columns
+colnames(prol_exp_1)[c(1,28)] <- c('ID', 'time_1')
+colnames(prol_exp_2)[c(1,30)] <- c('ID', 'time_2')
+
+#merge both parts of the test
+df_prol_exp <- inner_join(prol_exp_1, prol_exp_2, by= 'ID')
+
+#let's rearrange the df columns
+df_prol_exp <- df_prol_exp [c('ID', vec1, vec2, 'time_1', 'time_2')]
+
+#load data from EPFL experts
+epfl_exp_1 <- read_excel('Z:/lafuente/CT/quantitative pilot/ORSEE/final docs/1st test EPFL comp valid.xlsx')
+
+epfl_exp_2 <- read_excel('Z:/lafuente/CT/quantitative pilot/ORSEE/final docs/2nd test EPFL comp valid.xlsx')
+
+#eliminate columns and files
+epfl_exp_1 <- epfl_exp_1[, -c(2, 5:8, 11:18, 21, 24, 27:32, 35, 38:39, 42, 45, 48, 51, 54)]
+
+epfl_exp_2 <- epfl_exp_2[ -c(109:110), -c(1:9, 11:12, 15, 18, 21, 24, 27:30, 33, 36:37, 40, 43, 46, 49, 52, 55)]
+
+#rename a couple of columns
+colnames(epfl_exp_1)[c(1,28)] <- c('ID', 'time_1')
+colnames(epfl_exp_2)[c(1,30)] <- c('ID', 'time_2')
+
+#merge both parts of the test but first we convert ID columns in df y to characters
+epfl_exp_2$ID <- as.character(epfl_exp_2$ID)
+epfl_exp_1$ID <- as.character(epfl_exp_1$ID)
+
+df_epfl_exp <- inner_join(epfl_exp_1, epfl_exp_2, by= 'ID')
+
+#let's rearrange the df columns
+df_epfl_exp <- df_epfl_exp [c('ID', vec1, vec2, 'time_1', 'time_2')]
+
+df_uni <- rbind(df_novices, df_prol_exp, df_epfl_exp)
+
+#import personal variables df
+var_prol_exp <- read_excel('Z:/lafuente/CT/quantitative pilot/Prolific/final docs/survey prolific experts man.xlsx')
+
+var_prol_nov <- read_excel('Z:/lafuente/CT/quantitative pilot/Prolific/final docs/survey prolific novices.xlsx')
+  
+var_orsee <- read_excel('Z:/lafuente/CT/quantitative pilot/ORSEE/final docs/survey orsee.xlsx')
+
+#remove specific degree column
+var_orsee <- var_orsee[, -17]
+
+#add expert/novice variable
+var_orsee$Expert <- 1
+
+#add variable to code them as EPFL (group=1)
+var_orsee$Group <- 'EPFL'
+
+#recode
+var_orsee <- var_orsee %>% mutate(Arch=case_when(
+  Arch== 'Yes'~ 'Arch',
+  TRUE~ NA_character_)) %>% mutate(Chem=case_when(
+  Chem=='Yes'~ 'Chem',
+  TRUE~ NA_character_)) %>% mutate(Civ_E=case_when(
+  Civ_E=='Yes'~ 'Civ_E',
+  TRUE~ NA_character_)) %>% mutate(CS=case_when(
+  CS=='Yes'~ 'CS',
+  TRUE~ NA_character_)) %>% mutate(El_E=case_when(
+  El_E=='Yes'~ 'El_E',
+  TRUE~ NA_character_)) %>% mutate(Env_E=case_when(
+  Env_E=='Yes'~ 'Env_E',
+  TRUE~ NA_character_)) %>% mutate(LS_E=case_when(
+  LS_E=='Yes'~ 'LS_E',
+  TRUE~ NA_character_)) %>% mutate(Mat_E=case_when(
+  Mat_E=='Yes'~ 'Mat_E',
+  TRUE~ NA_character_)) %>% mutate(Math=case_when(
+  Math=='Yes'~ 'Math',
+  TRUE~ NA_character_)) %>% mutate(Mec_E=case_when(
+  Mec_E=='Yes'~ 'Mec_E',
+  TRUE~ NA_character_)) %>% mutate(Mic_E=case_when(
+  Mic_E=='Yes'~ 'Mic_E',
+  TRUE~ NA_character_)) %>% mutate(Phys=case_when(
+  Phys=='Yes'~ 'Phys',
+  TRUE~ NA_character_))
+
+#create a unified column for degree
+var_orsee$Degree <-  coalesce(var_orsee$Arch, var_orsee$Chem, var_orsee$Civ_E, var_orsee$CS, var_orsee$El_E, var_orsee$Env_E, var_orsee$LS_E, var_orsee$Mat_E, var_orsee$Math, var_orsee$Mec_E, var_orsee$Mic_E, var_orsee$Phys)
+
+#eliminate columns for individual degrees
+var_orsee <- var_orsee[,-c(4:16)]
+#eliminate programming column
+var_orsee <- var_orsee[,-5]
+
+#convert certain variables into factors using lapply
+names <- c(1, 3:4, 6:8)
+var_orsee[names] <- lapply(var_orsee[names], factor)
+
+#Recode Level
+var_orsee <- var_orsee %>% mutate(Level= case_when(
+  Level== "Are in first year of a Bachelor’s program"~ "1",
+  Level== "Are in second year of a Bachelor’s program"~ "2",
+  Level== "Are in third year of a Bachelor’s program"~ "3",
+  Level== "Are in fourth year of a Bachelor’s program"~ "4",
+  Level== "Completed a Bachelor’s program (you don’t study at EPFL now)" ~ "5",
+  Level== "Are taking a Master’s program" ~ "6",
+  Level== "Completed a Master’s program (you don’t study at EPFL now)"~ "7",
+  Level== "Are taking a doctoral program" ~ "8",
+  Level== "Completed a doctoral program (you don’t study at EPFL now)"~ "9",
+  TRUE~ NA_character_))
+
+# Recode langauages and convert age, level and languages column into numeric
+var_orsee <- var_orsee %>%  mutate(Languages= case_when(
+  Languages== "More than 3"~ "4",
+  Languages== "3"~"3",
+  Languages== "2"~"2",
+  Languages== "1"~"1",
+  Languages== "0"~"0"
+))
+names <- c(2, 4, 6)
+var_orsee[names] <- lapply(var_orsee[names], as.numeric)
+
+#Do the same with the Prolific experts
+#add expert/novice variable
+var_prol_exp$Expert <- 1
+
+#add variable to code them as Prolif experts (group=2)
+var_prol_exp$Group <- 'Exp_Pr'
+
+#eleminate unnecessary coluumns
+var_prol_exp <- var_prol_exp [, -c(4,6,7,9)]
+
+#convert certain variables into factors using lapply
+names <- c(1, 3:5, 7:8)
+var_prol_exp[names] <- lapply(var_prol_exp[names], factor)
+
+#Recode Level
+var_prol_exp <- var_prol_exp %>% mutate(Level= case_when(
+  Level== "Bachelor's degree (1st year)"~ "1",
+  Level== "Bachelor's degree (2nd year)"~ "2",
+  Level== "Bachelor’s degree (3rd year)"~ "3",
+  Level== "Bachelor’s degree (4th year)"~ "4",
+  Level== "Completed a Bachelor's degree" ~ "5",
+  Level== "Doing a Master’s degree" ~ "6",
+  Level== "Completed a Master's degree"~ "7",
+  Level== "Doing a Ph.D. degree" ~ "8",
+  TRUE~ NA_character_))
+
+# Recode langauages and convert age, level and languages column into numeric
+var_prol_exp <- var_prol_exp %>%  mutate(Languages= case_when(
+  Languages== "More than 3"~ "4",
+  Languages== "3"~"3",
+  Languages== "2"~"2",
+  Languages== "1"~"1",
+  Languages== "0"~"0"
+))
+names <- c(2, 4, 6)
+var_prol_exp[names] <- lapply(var_prol_exp[names], as.numeric)
+
+#Now the same for the novices from Prolific
+#add expert/novice variable
+var_prol_nov$Expert <- 0
+
+#add variable to code them as novices (group=3)
+var_prol_nov$Group <- 'Nov'
+
+#Add a column to specify their degree (Social Science)
+
+var_prol_nov$Degree <- "Soc"
+
+#rearrange Degree column
+var_prol_nov <- var_prol_nov[c(1, 2, 3, 4, 6, 5, 7, 8)]
+
+#convert certain variables into factors using lapply
+names <- c(1, 3:5, 7:8)
+var_prol_nov[names] <- lapply(var_prol_nov[names], factor)
+
+#Recode Level
+var_prol_nov <- var_prol_nov %>% mutate(Level= case_when(
+  Level== "Bachelor's degree (1st year)"~ "1",
+  Level== "Bachelor's degree (2nd year)"~ "2",
+  Level== "Bachelor’s degree (3rd year)"~ "3",
+  Level== "Bachelor’s degree (4th year)"~ "4",
+  Level== "Completed a Bachelor's degree" ~ "5",
+  Level== "Doing a Master’s degree" ~ "6",
+  Level== "Completed a Master's degree"~ "7",
+  Level== "Doing a Ph.D. degree" ~ "8",
+  TRUE~ NA_character_))
+
+# Recode langauages and convert age, level and languages column into numeric
+var_prol_nov <- var_prol_nov %>%  mutate(Languages= case_when(
+  Languages== "More than 3"~ "4",
+  Languages== "3"~"3",
+  Languages== "2"~"2",
+  Languages== "1"~"1",
+  Languages== "0"~"0"
+))
+
+names <- c(2, 4, 6)
+var_prol_nov[names] <- lapply(var_prol_nov[names], as.numeric)
+
+# Now let's merge the different groups df into one single df
+
+df_vars <- rbind(var_orsee, var_prol_exp, var_prol_nov)
+
+#find duplicates in the df to remove them
+which(duplicated(df_vars$ID))
+
+#merge the items df with the variables df
+df <- inner_join(df_uni, df_vars, by= 'ID')
+
+#change some variable types
+df$Languages <- as.numeric(df$Languages)
+df$Expert <- as.factor(df$Expert)
+
+#We impute values for Gender and one item missing values
+df$Gender[df$Gender=='N/A'] <- NA 
+df$Gender <- Hmisc::impute(df$Gender)
+df$Gender <- factor(df$Gender, levels = c("Female", "Male"))
+df$`17` <- Hmisc::impute(df$`17`)
+df$`17` <- as.numeric(df$`17`)
+
+#prepare a column for the toal score of each participant
+df$total_score <- rowSums(df[,2:28])
+
+```
+
+```{r general analyses, dependson=c('setup', 'data'), cache=TRUE}
+# Distribution of scores
+ggplot(aes(x=total_score), data = df) + 
+  geom_histogram(bins = 24) +
+  theme_dark()
+
+#is the distribution normal?
+
+ks.test(df$total_score, pnorm(10000, mean = mean(df$total_score), sd= sd(df$total_score)))
+
+#Average scores per group
+df %>% group_by(Group) %>% summarise(n=n(), aver_score=mean(total_score), percent_score=mean((total_score)/27)*100)
+
+#let's draw the plot
+#ggplot(aes(x=Group, y=total_score), data = df) + 
+ # geom_boxplot() +
+  #theme_dark()
+
+pirateplot(total_score~ Group, data = df,
+                      cex.names = 0.7,
+                      cex.lab = 1,
+                      bean.f.o = .2,
+                      bean.lty = 0,
+                      inf.method = 'iqr',
+                      inf.disp = 'line',
+                      inf.lwd = 2,
+                      point.o=0,
+           main = 'Scores by group',
+           ylab = 'Scores')
+
+#Are these differences significant from a statistical viewpoint?
+g_epfl_nov <- data.frame(df %>% filter(Group %in% c('EPFL', 'Nov')))
+t.test(g_epfl_nov$total_score ~ g_epfl_nov$Group)
+
+g_epfl_exp_pr <- data.frame(df %>% filter(Group %in% c('EPFL', 'Exp_Pr')))
+t.test(g_epfl_exp_pr$total_score ~ g_epfl_exp_pr$Group)
+
+g_exp_pr_nov <- data.frame(df %>% filter(Group %in% c('Nov', 'Exp_Pr')))
+t.test(g_exp_pr_nov$total_score ~ g_exp_pr_nov$Group)
+
+#Is there any significant differences between expertise?
+
+df %>% group_by(Expert) %>% summarise(n=n(), sd= sd(total_score), aver_score=mean(total_score), percent_score=mean((total_score)/27)*100)
+
+t.test(df$total_score[df$Expert=='1'], df$total_score[df$Expert=='0'])
+
+wilcox.test(df$total_score ~ df$Expert)
+
+#ggplot(aes(x=Expert, y=total_score), data = df) + 
+ # geom_boxplot() +
+  #theme_dark()
+
+pirateplot(total_score~ Expert, data = df,
+                      cex.names = 0.7,
+                      cex.lab = 1,
+                      bean.f.o = .2,
+                      bean.lty = 0,
+                      inf.method = 'iqr',
+                      inf.disp = 'line',
+                      inf.lwd = 2,
+                      point.o=0,
+           main = 'Scores by expertise',
+           ylab = 'Scores')
+t.test(df$total_score ~ df$Expert)
+
+lm_exp <- lm(total_score~ Expert, data = df)
+summary(lm_exp)
+
+#Is programming a score predictor?
+cor(df$total_score, df$Languages)
+cor.test(df$total_score, df$Languages)
+
+lm_lang <- lm(total_score ~ Languages, data = df)
+summary(lm_lang)
+
+#let's summarize number of languages mastered by group
+
+df %>% group_by(Expert, Languages) %>% summarise(n=n())
+
+#Is the educational level a score predictor?
+cor(df$total_score, df$Level)
+cor.test(df$total_score, df$Level)
+
+df_levels <- df
+df_levels$Level <- factor(df_levels$Level, labels = c('BA2', "BA3", "BA4", "full_BA", "MA", "full_MA", "PhD"))
+
+lm_levels <- lm(total_score~ Level, data = df_levels)
+anova(lm_levels)
+summary(lm_levels)
+
+df_levels %>% group_by(Level) %>% summarise(n=n(), aver_score=mean(total_score), percent_score=mean((total_score)/27)*100)
+
+df_levels %>% group_by(Expert, Level) %>% summarise(levels=n())
+
+#ggplot(aes(x=Level, y=total_score), data = df_levels) + 
+ # geom_boxplot() +
+  #theme_dark()
+
+pirateplot(total_score~ Level, data = df_levels,
+                      cex.names = 0.7,
+                      cex.lab = 1,
+                      bean.f.o = .2,
+                      bean.lty = 0,
+                      inf.method = 'iqr',
+                      inf.disp = 'line',
+                      inf.lwd = 2,
+                      point.o=0,
+           main = 'Scores by level',
+           ylab = 'Scores')
+
+#Let's see differences only in EPFL students and plot their scores
+df_epfl_levels <- df_levels %>% filter(Group== 'EPFL')
+
+epfl_levels <- lm(total_score~ Level, data = df_epfl_levels)
+anova(epfl_levels)
+
+df_epfl_levels %>% group_by(Level) %>% summarise(average=mean(total_score))
+
+pirateplot(total_score~ Level, data = df_epfl_levels,
+                      cex.names = 0.7,
+                      cex.lab = 1,
+                      bean.f.o = .2,
+                      bean.lty = 0,
+                      inf.method = 'iqr',
+                      inf.disp = 'line',
+                      inf.lwd = 2,
+                      point.o=0,
+           main = 'EPFL scores by level',
+           ylab = 'Scores')
+
+#mean age of the two samples?
+df %>% group_by(Expert) %>% summarise(mean_age=mean(Age))
+
+#Is age a score predictor?
+df %>% group_by(Age) %>% summarise(n=n(), aver_score=mean(total_score), percent_score=mean((total_score)/27)*100) %>% arrange(desc(percent_score))
+
+cor(df$total_score, df$Age)
+cor.test(df$total_score, df$Age)
+
+#Are there any differences by gender?
+df %>% group_by(Gender) %>% summarise(n=n(), sd= sd(total_score), aver_score=mean(total_score), percent_score=mean((total_score)/27)*100)
+
+gender_r <- df %>% group_by(Expert, Gender) %>% summarise(n=n(), sd= sd(total_score), aver_score=mean(total_score), percent_score=mean((total_score)/27)*100)
+
+gender_r
+                                                          
+t.test(total_score~ Gender, data = df)
+
+huxtable(gender_r)
+g_experts <- data.frame(df %>% filter(Expert=='1'))
+g_novices <- data.frame(df %>% filter(Expert=='0'))
+t.test(total_score ~ Gender, data = g_experts)
+t.test(total_score ~ Gender, data = g_novices)
+
+pirateplot(total_score~ Gender + Expert, data = df,
+                      cex.names = 0.7,
+                      cex.lab = 1,
+                      bean.f.o = .2,
+                      bean.lty = 0,
+                      inf.method = 'iqr',
+                      inf.disp = 'line',
+                      inf.lwd = 2,
+                      point.o=0,
+           main = 'Scores by gender',
+           ylab = 'Scores')
+
+#Which studies achieve better scores?
+df_degrees <- df
+df_degrees$Degree <- as.character(df_degrees$Degree)
+df_degrees <-  df_degrees %>% mutate(Degree=case_when(
+  Degree== 'Math'~ 'Math',
+  Degree== 'Phys'~ 'Phys',
+  Degree %in% c('Mic_E', 'El_E', "Civ_E", "Mec_E")~ 'Eng',
+  Degree== 'CS' ~ 'CS',
+  Degree== 'Soc'~ "Soc"))
+
+#create only 2 factors for gender
+df_degrees$Gender <- factor(df_degrees$Gender, levels = c("Female", "Male"))
+#create factors for degree
+df_degrees$Degree <- factor(df_degrees$Degree, levels = c("Soc", "CS", "Eng", "Math", "Phys"))
+
+df_degrees %>% group_by(Degree) %>% summarise(n=n(), sd= sd(total_score), aver_score=mean(total_score), percent_score=mean((total_score)/27)*100) %>% arrange(desc(percent_score))
+
+score_degree <- lm(total_score~ Degree, data = df_degrees)
+summary(score_degree)
+
+anova(score_degree)
+model_score_degree <- aov(score_degree)
+
+TukeyHSD(model_score_degree)
+
+tiff("test.tiff", units="in", width=5, height=5, res=300)
+pirateplot(total_score~ Degree, data = df_degrees,
+                      cex.names = 0.7,
+                      cex.lab = 1,
+                      bean.f.o = .2,
+                      bean.lty = 0,
+                      inf.method = 'iqr',
+                      inf.disp = 'line',
+                      inf.lwd = 2,
+                      point.o=0,
+           main = 'Scores by degree',
+           ylab = 'Scores')
+
+
+dev.off()
+
+#do a linear regression to see the variance explained by all the IV
+#1st model, include expertise, and not group or degree
+reg_IV_exp <- lm(total_score~ Age+ Gender+ Level + Languages+ Expert, data = df_degrees)
+
+#2nd model, include group and not expertise or degree
+reg_IV_gr <- lm(total_score~ Age+ Gender+ Level + Languages+ Group, data = df_degrees)
+
+#3rd model, include degree and not group or expertise
+reg_IV_de <- lm(total_score~ Age+ Gender+ Level + Languages + Degree, data = df_degrees)
+
+stargazer::stargazer(reg_IV_exp, reg_IV_de, reg_IV_gr, type = "text", column.labels = c("Expertise", "Degree", "Group"), model.names=FALSE, column.sep.width = "5pt", df=FALSE)
+
+
+#now, let's try hierarchical linear regressions
+model1 <- lm(total_score~ Age, df_degrees)
+model2 <- lm(total_score~ Age+ Gender, df_degrees)
+model3 <- lm(total_score~ Age+ Gender+ Level, df_degrees)
+model4 <- lm(total_score~ Age+ Gender+ Level+ Languages, df_degrees)
+model5 <- lm(total_score~ Age+ Gender+ Level+ Languages + Expert, df_degrees)
+model6 <- lm(total_score~ Age+ Gender+ Level+ Languages + Degree, df_degrees)
+model7 <- lm(total_score~ Age+ Gender+ Level+ Languages + Degree + Expert, df_degrees)
+
+stargazer::stargazer(model1, model2, model3, model4, model5, model6, type = "text", column.labels = c("1", "2", "3", "4", "5", "6"), model.names=FALSE, column.sep.width = "5pt", df=FALSE)
+
+#let's dummify all the variables and see their influence on the DDVV
+
+df_variables <- df_degrees[, c(58:62, 64:65)]
+df_dummies <- dummify(df_variables[,c(2,6)])
+df_dummies <- cbind(df_dummies, df_variables[,-c(2,6)])
+
+reg_dumm_degrees <- lm(total_score ~ Age + Level + Languages + Gender_Male + Degree_CS + Degree_Eng + Degree_Math + Degree_Phys, data= df_dummies)
+
+reg_dumm_expertise <- lm(total_score ~ Age + Level + Languages +  Gender_Male + Expert, data= df_dummies)
+
+summary(reg_dumm_degrees)
+summary(reg_dumm_expertise)
+
+#let's dummify even the levels and language variables and test them in the same model
+df_dummies_cat <- df_dummies
+df_dummies_cat[,9] <- as.factor(df_dummies[,9])
+df_dummies_cat[,10] <- as.factor(df_dummies[,10])
+df_all_dumm <- df_dummies_cat
+df_dumm_levels_lang <- dummify(df_all_dumm[, c(9:10)])
+
+df_all_dumm <- cbind(df_dummies_cat[,-c(9,10)], df_dumm_levels_lang) 
+
+df_isis <- cbind(df_all_dumm, df_dummies[,c(9:10)])
+df_isis <- df_isis[,c(1,2,3,4,5,6,7,8,9,11,12,13,14,15,16,17,18,19,20,21,22,23,24,10)]
+
+write.xlsx(df_isis, 'Z:/lafuente/CT/quantitative pilot/df_dummies_isis.xlsx')
+
+#with degrees
+reg_all_dumm_degrees <- lm(total_score ~ Age + Languages_0 + Languages_1 + Languages_2 + Languages_3 + Languages_4 + Level_2 +  Level_3 + Level_4 + Level_5 + Level_6 + Level_7 + Level_8 + Gender_Male + Degree_CS + Degree_Eng + Degree_Math + Degree_Phys, data= df_all_dumm)
+
+summary(reg_all_dumm_degrees)
+
+#with expertise
+reg_all_dumm_exp <- lm(total_score ~ Age + Languages_0 + Languages_1 + Languages_2 + Languages_3 + Languages_4 + Level_2 +  Level_3 + Level_4 + Level_5 + Level_6 + Level_7 + Level_8 + Gender_Male + Expert, data= df_all_dumm)
+
+summary(reg_all_dumm_exp)
+
+#with degrees (only level dummified, not languages)
+reg_lev_dum_exp <- lm(total_score ~ Age + Languages + Level_2 +  Level_3 + Level_4 + Level_5 + Level_6 + Level_7 + Level_8 + Gender_Male + Expert, data= df_isis)
+
+summary(reg_lev_dum_exp)
+
+reg_lev_dum_degree <- lm(total_score ~ Age + Languages + Level_2 +  Level_3 + Level_4 + Level_5 + Level_6 + Level_7 + Level_8 + Gender_Male + Degree_CS + Degree_Eng + Degree_Math + Degree_Phys, data= df_isis)
+
+summary(reg_lev_dum_degree)
+
+
+#with degrees (only level dummified, not languages)
+reg_lev_dum_exp <- lm(total_score ~ Age + Languages + Level_2 +  Level_3 + Level_4 + Level_5 + Level_6 + Level_7 + Level_8 + Gender_Male + Expert, data= df_isis)
+
+summary(reg_lev_dum_exp)
+
+#same, without age
+reg_lev_dum_degree_noage <- lm(total_score ~ Languages + Level_2 +  Level_3 + Level_4 + Level_5 + Level_6 + Level_7 + Level_8 + Gender_Male + Degree_CS + Degree_Eng + Degree_Math + Degree_Phys, data= df_isis)
+
+reg_lev_dum_exp_noage <- lm(total_score ~ Languages + Level_2 +  Level_3 + Level_4 + Level_5 + Level_6 + Level_7 + Level_8 + Gender_Male + Expert, data= df_isis)
+
+#check assumptions for these two models
+plot(performance::check_heteroscedasticity(reg_lev_dum_degree_noage))
+plot(performance::check_heteroscedasticity(reg_lev_dum_exp_noage))
+plot(performance::check_autocorrelation(reg_lev_dum_degree_noage))
+plot(performance::check_autocorrelation(reg_lev_dum_exp_noage))
+plot(performance::check_collinearity(reg_lev_dum_degree_noage))
+plot(performance::check_collinearity(reg_lev_dum_exp_noage))
+plot(performance::check_distribution (reg_lev_dum_degree_noage))
+plot(performance::check_distribution (reg_lev_dum_exp_noage))
+plot(performance::check_normality(reg_lev_dum_degree_noage))
+plot(performance::check_normality(reg_lev_dum_exp_noage))
+
+plot(performance::check_outliers (reg_lev_dum_degree_noage))
+plot(performance::check_outliers (reg_lev_dum_exp_noage))
+
+stargazer::stargazer(reg_dumm_expertise, reg_dumm_degrees, reg_all_dumm_exp, reg_all_dumm_degrees, type = "text", column.labels = c("expertise", "degrees", "all dummies expertise", "all dummies degrees"), model.names=FALSE, column.sep.width = "5pt", df=FALSE)
+
+stargazer::stargazer(reg_lev_dum_exp, reg_lev_dum_degree, type = "text", column.labels = c("model with expertise", "model with degrees"), model.names=FALSE, column.sep.width = "5pt", df=FALSE)
+
+stargazer::stargazer(reg_lev_dum_exp_noage, reg_lev_dum_degree_noage, type = "text", column.labels = c("model with expertise", "model with degrees"), model.names=FALSE, column.sep.width = "5pt", df=FALSE)
+
+#let's correlate time with total score, to see if we can justify that we don't need to measure execution time in the future test application
+
+df_correl <- df
+df_correl <- df_correl %>% mutate(total_time= rowSums(df_correl[c(29:55)]))
+cor.test(df_correl$total_score, df_correl$total_time)
+
+#What's the average time?
+mean_t_all <- mean(df_correl$total_time)
+median_t_all <- median(df_correl$total_time)
+meant_t_nov <- mean(df_correl$total_time[df_correl$Expert=='0'])
+median_t_nov <- median(df_correl$total_time[df_correl$Expert=='0'])
+meant_t_exp <- mean(df_correl$total_time[df_correl$Expert=='1'])
+median_t_exp <- median(df_correl$total_time[df_correl$Expert=='1'])
+
+#per item?
+mean_t_all_per_item <- mean(df_correl$total_time)/27
+median_t_all_per_item <- median (df_correl$total_time)/27
+
+#how many minutes is that?
+mean_t_all_per_item/60
+
+#Do the scores have homogeneous variance across key independent variables?
+
+var_exp <- lm(total_score ~ Expert, data = df)
+var_deg <- lm(total_score~ Degree, data = df_degrees)
+var_gen <- lm(total_score~ Gender, data = df_degrees)
+var_lev <- lm(total_score~ Level, data = df)
+var_lan <- lm(total_score~ Languages, data = df)
+
+plot(performance::check_homogeneity (var_exp))
+
+bartlett.test(total_score~ Expert, data = df)
+
+plot(performance::check_homogeneity (var_deg))
+
+plot(performance::check_homogeneity (var_gen))
+
+plot(performance::check_homogeneity (var_lev))
+
+plot(performance::check_homogeneity (var_lan))
+
+#and is homogeneous the variance across items regarding expertise?
+for (i in (1:27)) {
+data.for.loop <- df[,c((i+1), 62)]
+colnames(data.for.loop) <- c('item', 'expert')
+mod_item <- lm(item~ expert, data.for.loop)
+
+print(paste('item',i, sep = ""))
+plot(performance::check_homogeneity (mod_item))
+}
+
+#and is homogeneous the variance in terms of execution time across items regarding expertise?
+for (i in (1:27)) {
+data.for.loop <- df[,c((i+28), 62)]
+colnames(data.for.loop) <- c('time', 'expert')
+mod_item <- lm(time~ expert, data.for.loop)
+
+print(paste('item',i, sep = ""))
+plot(performance::check_homogeneity (mod_item))
+}
+
+#is there a normal distribution across groups in degrees?
+degrees <- vector (mode="character", length = 5)
+degrees <- c("Soc", "CS", "Eng", "Phys", "Math")
+
+for (i in 1:5) {
+df_loop <- data.frame(df_degrees %>% filter(Degree== degrees[i]))
+
+print(degrees[i])
+print(ks.test(df_loop$total_score, rnorm(1000, mean(df_loop[,65]), sd(df_loop[,65]))))
+}
+
+#And across genders?
+genders <- vector (mode="character", length = 2)
+genders <- c("Male", "Female")
+
+for (i in 1:2) {
+df_loop <- data.frame(df_degrees %>% filter(Gender== genders[i]))
+
+print(genders[i])
+print(ks.test(df_loop$total_score, rnorm(1000, mean(df_loop[,65]), sd(df_loop[,65]))))
+}
+
+
+```
+
+```{r scores and discrimination, dependson=c('setup', 'data', 'general analyses'), cache=TRUE}
+
+#let's analyze if there are any significant differences in every item across experts and novices
+
+#let's create df-longs for the loop
+
+df_long_items <- pivot_longer(df, cols = 2:28, names_to = 'item', values_to = 'score')
+df_long_times <- pivot_longer(df, cols = 29:55, names_to = 'times', values_to = 'value')
+
+#let's create a loop to store these values (t statistics, pvalues, means)...
+
+#We create empty vectors for the loop
+mean_exp <- NA
+mean_nov <- NA
+sd_exp <- NA
+sd_nov <- NA
+median_exp <- NA
+median_nov <- NA
+t_stat <- NA
+p_value <- NA
+eff_size <- NA
+
+#we assign first the experts and then the novices because the cohensd function requires so
+df_long_items  <- df_long_items %>% arrange(Expert) %>% mutate(Expert= factor(Expert, levels = c(1,0)))
+
+#loop formulation for means, sd and effect sizes
+
+for (i in 1:27) {
+data.for.loop <- subset(df_long_items, item==i)
+mean_exp [i] <- mean(data.for.loop$score[data.for.loop$Expert=='1' & data.for.loop$item==i])
+mean_nov [i] <- mean(data.for.loop$score[data.for.loop$Expert=='0' & data.for.loop$item==i])  
+sd_exp [i] <- sd(data.for.loop$score[data.for.loop$Expert=='1' & data.for.loop$item==i])
+sd_nov [i] <- sd(data.for.loop$score[data.for.loop$Expert=='0' & data.for.loop$item==i])
+eff_size [i]<- effectsize::cohens_d(score ~ Expert, data = data.for.loop)$Cohens_d
+}
+
+#loop for Mann Whitney tests
+
+df_long_items  <- df_long_items %>% arrange(Expert) %>% mutate(Expert= factor(Expert, levels = c(0,1)))
+
+for (i in 1:27) {
+   data.for.loop <- subset(df_long_items, item==i)
+t_stat [i] <- t.test(score ~Expert, data= data.for.loop)$statistic
+p_value [i] <- wilcox.test(score ~Expert, data= data.for.loop)$p.value
+}
+
+#loop for times, medians
+
+for (i in 1:27) {
+data.for.loop <- subset(df_long_times, times==paste('t',i, sep = ""))
+median_exp [i] <- median(data.for.loop$value[data.for.loop$Expert=='1' & data.for.loop$times==paste('t',i, sep = "")])
+median_nov [i] <- median(data.for.loop$value[data.for.loop$Expert=='0' & data.for.loop$times==paste('t',i, sep = "")])
+}
+
+#loop for Mann Whitney tests
+
+t_stat_time <- NA
+p_value_time <- NA
+
+df_long_times  <- df_long_times %>% arrange(Expert) %>% mutate(Expert= factor(Expert, levels = c(0,1)))
+
+for (i in 1:27) {
+   data.for.loop <- subset(df_long_times, times==paste('t',i, sep = ""))
+t_stat_time [i] <- t.test(value ~Expert, data= data.for.loop)$statistic
+p_value_time [i] <- wilcox.test(value ~Expert, data= data.for.loop)$p.value
+}
+
+#We paste together everything into the same dataframe
+results <- data.frame(mean_exp, sd_exp, mean_nov, sd_nov, eff_size, p_value, median_exp, median_nov, p_value_time)
+
+#We round it to 2 decimals
+results <- round(results, 2)
+
+#put rownames as items
+row_items <- NA
+for (i in 1:27) {row_items [i]<- paste('item',i, sep = "")}
+rownames(results) <- row_items
+
+huxtable(results)
+  
+#save the results!
+saveRDS(results, file = 'Z:/lafuente/CT/quantitative pilot/table_items_wilcox.Rds')  
+
+df_items <- df[,c(2:28)]
+df_items_exp <- df %>% filter(Expert=='1')
+df_items_exp <- df_items_exp[,(2:28)]
+df_items_nov <- df %>% filter(Expert=='0')
+df_items_nov <- df_items_nov[, (2:28)]
+
+tab_itemscale(df_items)
+
+#with this we also get the guessing parameter
+tpm(df_items)
+
+```
+
+```{r EFAs, dependson=c('setup', 'data', 'general analyses', 'scores and discrimination'), cache=TRUE}
+
+#unrotated? PCA with all the sample
+
+EFA1 <- PCA(df_items)
+
+plot(EFA1$eig)
+
+EFA1$eig
+EFA1$var
+
+#unrotated PCA with all the sample
+
+EFA2 <- princomp(df_items)
+
+summary(EFA2)
+loadings(EFA2)
+plot(EFA2, type="lines")
+biplot(EFA2)
+
+#rotated PCA ("promax") imposing n factors
+
+EFA3 <- principal(df_items, nfactors = 2, rotate = "promax")
+EFA3
+
+print(EFA3)
+
+EFA4 <- principal(df_items, nfactors = 5, rotate = "promax")
+EFA4
+
+print(EFA4)
+
+EFA5 <- principal(df_items, nfactors = 1, rotate = "promax")
+print(EFA5)
+
+#vamos a probar un análisis factorial de verdad, no PCA
+EFA6 <- factanal(df_items, 1, rotation = 'varimax')
+print(EFA6)
+
+EFA7 <- factanal(df_items, 2, rotation = 'varimax')
+print(EFA7)
+
+EFA8 <- factanal(df_items, 5, rotation = 'varimax')
+print(EFA8)
+
+#let's apply the same EFAs on the group of experts
+#unrotated PCA on experts
+EFA1_exp <- PCA(df_items_exp)
+
+plot(EFA1_exp$eig)
+
+EFA1_exp$eig
+EFA1_exp$var
+  
+#rotated PCA ("promax") imposing n factors
+
+EFA3_exp <- principal(df_items_exp, nfactors = 2, rotate = "promax")
+
+print(EFA3_exp)
+
+EFA4_exp <- principal(df_items_exp, nfactors = 5, rotate = "promax")
+
+print(EFA4_exp)
+
+EFA5_exp <- principal(df_items_exp, nfactors = 1, rotate = "promax")
+print(EFA5_exp)
+
+
+```
+
+```{r CFAs, dependson=c('setup', 'data', 'general analyses', 'scores and discrimination', 'EFAs'), cache=TRUE}
+#implement model to test 2nd system of categories
+
+#create new df for items with other column names
+df_items_cfa <- df_items
+colnames(df_items_cfa) <- row_items
+
+sys_cont <- '
+algo_co =~ item1+ item2+ item3+ item6+ item7+ item9+ item10+ item11+ item12+ item13+ item14+ item16+ item17+ item18+ item19+ item20+ item22+ item23+ item24+ item25+ item26+ item27
+data =~ item4+ item5+ item8+ item15+ item21
+'
+
+#on all the sample
+fit.cont <- lavaan::cfa(sys_cont, data=df_items_cfa)
+
+#simply see the fit measure
+lavaan::fitmeasures(fit.cont)
+
+# standardised estimates
+sfit.cont <- lavaan::standardizedsolution(fit.cont)
+
+# select only the item loadings
+sfit.cont[sfit.cont$op=="=~",]
+
+# variance explained by items
+inspect(fit.cont, "r2")
+
+s.fit.cont <- inspect(fit.cont, "std")
+
+# standardized loadings
+s.fit.cont$lambda 
+
+#latent variable correlation matrix
+s.fit.cont$psi
+
+#it fits but... let's see cronbach's alpha for the two scales
+df_items_algo_co <- df_items[,c(1:3, 6:7, 9:14, 16:20, 22:27)]
+df_items_data <- df_items[, c(4,5,8,15,21)]
+df_items_algo_co_exp <- df_items_exp[,c(1:3, 6:7, 9:14, 16:20, 22:27)]
+df_items_data_exp <- df_items_exp[, c(4,5,8,15,21)]
+df_items_algo_co_nov <- df_items_nov[,c(1:3, 6:7, 9:14, 16:20, 22:27)]
+df_items_data_nov <- df_items_nov[, c(4,5,8,15,21)]
+
+#let's see their reliability
+tab_itemscale(df_items_algo_co)
+tab_itemscale(df_items_data)
+tab_itemscale(df_items_algo_co_exp)
+tab_itemscale(df_items_data_exp)
+tab_itemscale(df_items_algo_co_nov)
+tab_itemscale(df_items_data_nov)
+
+#Let's try the model based on contents but more complex (more than 1 category per item is accepted)
+sys_cont_comp <- '
+algo_co =~ item1+ item2+ item3+ item6+ item7+ item8+ item9+ item10+ item11+ item12+ item13+ item14+ item16+ item17+ item18+ item19+ item20+ item22+ item23+ item24+ item25+ item26+ item27
+data =~ item2+ item4+ item5+ item8+ item11+ item15+ item21
+'
+#on all the sample
+fit.cont.comp <- lavaan::cfa(sys_cont_comp, data=df_items_cfa, orthogonal=TRUE)
+
+#simply see the fit measure
+lavaan::fitmeasures(fit.cont.comp)
+
+# standardised estimates
+sfit.cont.comp <- standardizedsolution(fit.cont.comp)
+
+# select only the item loadings
+sfit.cont.comp[sfit.cont.comp$op=="=~",]
+
+# variance explained by items
+inspect(fit.cont.comp, "r2")
+
+s.fit.cont.comp <- inspect(fit.cont.comp, "std")
+
+# standardized loadings
+s.fit.cont.comp$lambda 
+
+#latent variable correlation matrix
+s.fit.cont.comp$psi
+
+#let's see the reliability of this 'data' subscale
+df_items_data_comp <- df_items[, c(2,4,5,8,15,21)]
+
+tab_itemscale(df_items_data_comp)
+#let's set the model for the 1st system of categories, simple version (going for the green or first categories)
+
+fit_skills_simple <- '
+algo_th =~ item1+ item2+ item3+ item5+ item6+ item7+ item8+ item9+ item11+ item12+ item13+ item16+ item17+ item19+ item20+ item22+ item24+ item25+ item26+ item27
+pattern =~ item4+ item10+ item14+ item15+ item18+ item23
+abstrac =~ item21
+eval =~ item27
+'
+
+#on all the sample
+fit.skills.simple <- lavaan::cfa(fit_skills_simple, data=df_items_cfa, std.lv= TRUE, orthogonal= TRUE)
+
+#simply see the fit measure
+lavaan::fitmeasures(fit.skills.simple)
+
+# standardised estimates
+sfit_skills_simple <- lavaan::standardizedsolution(fit.skills.simple)
+
+# select only the item loadings
+sfit_skills_simple[sfit_skills_simple$op=="=~",]
+
+# variance explained by items
+inspect(fit.skills.simple, "r2")
+
+s.fit.skills.s <- inspect(fit.skills.simple, "std")
+
+# standardized loadings
+s.fit.skills.s$lambda 
+
+#latent variable correlation matrix
+s.fit.skills.s$psi
+
+#let's see their reliability
+#we construct the dfs for every scale
+df_items_algo_th <- df_items[,c(1:3, 5:9, 11:13, 16:17, 19:20, 22, 24:27)]
+df_items_pattern <- df_items[, c(4,10, 14:15, 18, 23)]
+
+tab_itemscale(df_items_algo_th)
+tab_itemscale(df_items_pattern)
+
+#let's do the same but without the subscales that have more than 2 items
+
+fit_skills_simple_s <- '
+algo_th =~ item1+ item2+ item3+ item5+ item6+ item7+ item8+ item9+ item11+ item12+ item13+ item16+ item17+ item19+ item20+ item22+ item24+ item25+ item26+ item27
+pattern =~ item4+ item10+ item14+ item15+ item18+ item23
+'
+
+#on all the sample
+fit.skills.simple.s <- lavaan::cfa(fit_skills_simple_s, data=df_items_cfa, std.lv= TRUE)
+
+#simply see the fit measure
+lavaan::fitmeasures(fit.skills.simple.s)
+
+#standardised estimates
+sfit_skills_simple.s <- lavaan::standardizedsolution(fit.skills.simple.s)
+
+# select only the item loadings
+sfit_skills_simple.s[sfit_skills_simple.s$op=="=~",]
+
+
+#now let's try a more complex model (with categories in parallel. CRITERION: EQUAL OR MORE THAN 45% AGREEMENT ON 'TOTALLY')
+
+fit_skills_complex <-' 
+algo_th =~ item1+ item2+ item3+ item5+ item6+ item7+ item8+ item9+ item11+ item12+ item13+ item15+ item16+ item17+ item19+ item20+ item22+ item24+ item25+ item26+ item27
+pattern =~ item4+ item10+ item14+ item15+ item18+ item21+ item22+ item23
+abstrac =~ item16+ item21 
+eval =~ item6 + item12+ item27 
+decomp =~ item7+ item19
+'  
+
+#on all the sample
+fit.skills.complex <- lavaan::cfa(fit_skills_complex, data=df_items_cfa)
+
+#simply see the fit measure
+lavaan::fitmeasures(fit.skills.complex)
+
+# standardised estimates
+sfit_skills_complex <- standardizedsolution(fit.skills.complex)
+
+# select only the item loadings
+sfit_skills_complex[sfit_skills_complex$op=="=~",]
+
+# variance explained by items
+inspect(fit.skills.complex, "r2")
+
+s.fit.skills.c <- inspect(fit.skills.complex, "std")
+
+# standardized loadings
+s.fit.skills.c$lambda 
+
+#latent variable correlation matrix
+s.fit.skills.c$psi
+
+#let's see their reliability
+#we construct the dfs for every scale
+
+df_items_algo_th_complex <- df_items[,c(1:3, 5:9, 11:13, 15:17, 19:20, 22, 24:27)]
+df_items_pattern_complex <- df_items[, c(4,10, 14:15, 18, 21:23)]
+df_items_abstrac_complex <-  df_items[, c(16, 21)]
+df_items_eval_complex <- df_items [, c(6, 12, 27)]
+df_items_decomp_complex <- df_items [, c(7, 19)]
+
+tab_itemscale(df_items_algo_th_complex)
+tab_itemscale(df_items_pattern_complex)
+tab_itemscale(df_items_abstrac_complex)
+tab_itemscale(df_items_decomp_complex)
+tab_itemscale(df_items_eval_complex)
+
+#let's try the complex model removing the scales with fewer items
+fit_skills_complexII <-' 
+algo_th =~ item1+ item2+ item3+ item5+ item6+ item7+ item8+ item9+ item11+ item12+ item13+ item15+ item16+ item17+ item19+ item20+ item22+ item24+ item25+ item26+ item27
+pattern =~ item4+ item10+ item14+ item15+ item18+ item21+ item22+ item23
+'
+
+#on all the sample
+
+fit.skills.complex_II <- lavaan::cfa(fit_skills_complexII, data=df_items_cfa)
+
+lavaan::fitmeasures(fit.skills.complex_II)
+
+#CFA of only 1 dimension
+
+uni_model <-' 
+algo =~ item1+ item2+ item3+ item4+ item5+ item6+ item7+ item8+ item9+ item10+ item11+ item12+ item13+ item14+ item15+ item16+ item17+ item18+ item19+ item20+ item21+ item22+ item23+ item24+ item25+ item26+ item27
+'  
+#on all the sample
+uni_all <- lavaan::cfa(uni_model, data=df_items_cfa)  
+
+#simply see the fit measure
+lavaan::fitmeasures(uni_all)
+
+# standardised estimates
+sfit_uni_all<- standardizedsolution(uni_all)
+
+# select only the item loadings
+sfit_uni_all[sfit_uni_all$op=="=~",]
+
+# variance explained by items
+inspect(uni_all, "r2")
+
+s.fit.uni.all <- inspect(uni_all, "std")
+
+# standardized loadings
+s.fit.uni.all$lambda 
+
+#let's see their reliability
+
+tab_itemscale(df_items)
+
+#let's test the same model in the two expertise-groups
+
+df_items_exp_cfa <- df_items_exp
+colnames(df_items_exp_cfa) <- row_items
+df_items_nov_cfa <- df_items_nov
+colnames(df_items_nov_cfa) <- row_items
+
+uni_experts <- lavaan::cfa(uni_model, data=df_items_exp_cfa)
+uni_novices <- lavaan::cfa(uni_model, data=df_items_nov_cfa)
+
+#simply see the fit measures
+lavaan::fitmeasures(uni_experts)
+lavaan::fitmeasures(uni_novices)
+
+#the model fits very well the novices, but not the experts
+#let's test only with EPFL students
+
+df_items_epfl_cfa <- df_epfl_exp[, c(2:28)]
+colnames(df_items_epfl_cfa) <- row_items
+uni_epfl <- lavaan::cfa(uni_model, data=df_items_epfl_cfa)  
+
+#simply see the fit measure
+lavaan::fitmeasures(uni_epfl)
+
+#it doesn't fit
+#let's see the prolific experts
+df_items_prol_cfa <- df_prol_exp[, c(2:28)]
+colnames(df_items_prol_cfa) <- row_items
+uni_prol_exp <- lavaan::cfa(uni_model, data=df_items_prol_cfa)  
+
+#simply see the fit measure
+lavaan::fitmeasures(uni_prol_exp)
+
+#let's try without the problematic items (4, 5, 10, 15, 22)
+
+uni_model_without <-' 
+algo =~ item1+ item2+ item3+ item6+ item7+ item8+ item9+ item11+ item12+ item13+ item14+ item16+ item17+ item18+ item19+ item20+ item21+ item23+ item24+ item25+ item26+ item27
+'  
+
+df_items_cfa_without <- df_items_cfa[, -c(4, 5, 10, 15, 22)]
+uni_all_without <- lavaan::cfa(uni_model_without, data=df_items_cfa_without)  
+
+#simply see the fit measure
+lavaan::fitmeasures(uni_all_without)
+
+# standardised estimates
+sfit_uni_all_without<- standardizedsolution(uni_all_without)
+
+# select only the item loadings
+sfit_uni_all_without[sfit_uni_all_without$op=="=~",]
+
+# variance explained by items
+inspect(uni_all_without, "r2")
+
+s.fit.uni.all.without <- inspect(uni_all_without, "std")
+
+# standardized loadings
+s.fit.uni.all.without$lambda 
+
+#let's see their reliability
+
+tab_itemscale(df_items_cfa_without)
+
+#let's see the same unidimensional model in both groups
+df_items_exp_cfa_without <- df_items_exp_cfa[, -c(4, 5, 10, 15, 22)]
+df_items_nov_cfa_without <- df_items_nov_cfa[, -c(4, 5, 10, 15, 22)]
+
+uni_experts_without <- lavaan::cfa(uni_model_without, data=df_items_exp_cfa_without)
+uni_novices_without <- lavaan::cfa(uni_model_without, data=df_items_nov_cfa_without)
+
+#simply see the fit measures
+lavaan::fitmeasures(uni_experts_without)
+lavaan::fitmeasures(uni_novices_without)
+
+#let's see the most problematic items in the experts group (those that doesn't fit)
+
+# standardised estimates
+sfit_uni_experts_without<- standardizedsolution(uni_experts_without)
+
+# select only the item loadings
+sfit_uni_experts_without[sfit_uni_experts_without$op=="=~",]
+
+#items 6, 8, 13, 16, 17, 18, 19, 20 don't load very well onto the scale.
+
+# variance explained by items
+inspect(uni_experts_without, "r2")
+
+s.fit.uni.exp.without <- inspect(uni_experts_without, "std")
+
+# standardized loadings
+s.fit.uni.exp.without$lambda
+
+#what happens if we leave the 15 items with the most discrimination power? 
+
+most_discr <- '
+discr=~ item16+ item27+ item23+ item24+ item20+ item7+ item8+ item21+ item17+ item25+ item26+ item11+ item12+ item9+ item1
+'
+
+df_items_exp_cfa_discr <- df_items_exp_cfa[, -c(2:6, 10, 13:15, 18:19, 22)]
+df_items_nov_cfa_discr <- df_items_nov_cfa[, -c(2:6, 10, 13:15, 18:19, 22)]
+
+discr_experts <- lavaan::cfa(most_discr, data=df_items_exp_cfa_discr)
+discr_novices <- lavaan::cfa(most_discr, data=df_items_nov_cfa_discr)
+
+discr_df <- bind_rows(df_items_exp_cfa_discr, df_items_nov_cfa_discr)
+discr_all <- lavaan::cfa(most_discr, discr_df)
+
+#simply see the fit measures
+lavaan::fitmeasures(discr_experts)
+lavaan::fitmeasures(discr_novices)
+lavaan::fitmeasures(discr_all)
+
+#the results are better for the experts, but not great
+
+# standardised estimates
+sfit_discr_all<- standardizedsolution(discr_all)
+sfit_discr_experts <- standardizedsolution(discr_experts)
+
+# select only the item loadings
+sfit_discr_all[sfit_discr_all$op=="=~",]
+sfit_discr_experts[sfit_discr_experts$op=="=~",]
+
+#how about an EFA on those items?
+
+EFA_discr <- PCA(discr_df)
+
+plot(EFA_discr$eig)
+
+EFA_discr$eig
+EFA_discr$var
+
+#how about an efa olny on the experts?
+
+EFA_discr_exp <- PCA (df_items_exp_cfa_discr)
+
+plot(EFA_discr_exp$eig)
+
+EFA_discr_exp$eig
+EFA_discr_exp$var  
+
+#let's run the unidimensional model on the final selection of 22 items:
+final_selec <- '
+algor=~ item1+ item2+ item3+ item6+ item7+ item8+ item9+ item11+ item12+ item13+ item16+ item17+ item19+ item20+ item21+ item23+ item24+ item25+ item26+ item27
+'
+df_final <- df_items_cfa[, -c(4, 5, 10, 14, 15, 18, 22)]
+
+final.selec <- lavaan::cfa(final_selec, data=df_final)
+
+lavaan::fitmeasures(final.selec)
+
+sfit_final_selec<- lavaan::standardizedsolution (final.selec)
+table_loadings <- sfit_final_selec[sfit_final_selec$op=="=~",]
+round(table_loadings[,-c(1:3)], 3)
+
+tab_itemscale(df_final)
+
+#let's plot this model
+graph_sem(final.selec, angle= 120)
+
+prepare_graph(final.selec) %>% edit_graph({label= paste(est_std)}, element = 'edges') %>%  plot()
+```
+      
+```{r multiple choice, CFAs, dependson=c('setup', 'data', 'general analyses', 'scores and discrimination', 'EFAs', 'CFAs'), cache=TRUE}
+
+#load the data
+mc_1_orsee <- readxl::read_excel('Z:/lafuente/CT/quantitative pilot/ORSEE/mc part1 orsee.xlsx')
+
+mc_2_orsee <- readxl::read_excel('Z:/lafuente/CT/quantitative pilot/ORSEE/mc 2nd part orsee.xlsx')
+
+mc_1_prol <- readxl::read_excel('Z:/lafuente/CT/quantitative pilot/Prolific/mc part 1 prol.xlsx')
+
+mc_2_prol <- readxl::read_excel('Z:/lafuente/CT/quantitative pilot/Prolific/mc part 2 prol.xlsx')
+
+#let's unite the orsee and prolific data
+mc_orsee <-  inner_join(mc_1_orsee, mc_2_orsee, by= 'ID')
+
+mc_prol <- inner_join(mc_1_prol, mc_2_prol, by= 'ID')
+
+#let's unite everything in a single df
+mc_all <- rbind(mc_orsee, mc_prol)
+
+#we can eliminate the discarded subjects by matching this df with our df_uni
+
+mc_valid <- inner_join(mc_all, df_uni, by= 'ID')
+mc_valid <- mc_valid[, c(2:15)]
+
+mc_valid <- mc_valid[,c(12, 14, 10, 4, 2, 13, 8, 9, 3, 7, 1, 6, 11, 5)]
+
+#let's run a loop to get all the results from the MC questions
+#col <- matrix(data=NA)
+for (i in 1:14) {
+percentages <- mc_valid %>% group_by(mc_valid[i]) %>% summarise(perc=round((n()/nrow(mc_valid))*100, 1))
+print(percentages)
+#col <- cbind(col, column)
+}
+
+#col <- col[,-1]
+#col
+
+#calculate mean execution time for the whole and final test (20 items)
+
+df_times_test <- df[,c(29, 30, 31, 34, 35, 36, 37, 39, 40, 41, 44, 45, 47, 48, 49, 51, 52, 53, 54, 55)]
+
+df_times_test$sum <- (rowSums(df_times_test))
+
+df_times_test <- rbind(df_times_test, (colSums(df_times_test)/289))
+
+total_sum_by_columns <- colSums(df_times_test[c(1:289),21])/289
+
+4237/60
+
+total_sum_by_rows <- rowSums(df_times_test[290,c(1:20)])
+```
